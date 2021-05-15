@@ -1,4 +1,4 @@
-# Finder in repo
+# Repo Finder
 
 Script para buscar una palabra en todos los branches de un repositorio.
 ```
