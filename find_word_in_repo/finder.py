@@ -32,73 +32,83 @@ class CustomGit:
 
     def find_word(self, word: str):
         out, err = self.__exec_command(f"grep -rnw '{self.path}' -e '{word}'")
-        return out
+        return out.decode()
 
     def get_all_branches(self):
         out, err = self.__exec_command(f"cd {self.path} && git branch")
-        return out
+        return out.decode()
 
 
-class Repo(object):
-    default_branch: str
-    branches: str
-    findings: List[object]
+def __actual_branch__(branch_name: str) -> bool:
+    return branch_name[0] == '*'
 
-    def __init__(self, path: str, word: str):
-        self.word = word
-        if os.path.exists(path) and os.path.isdir(path):
-            self.path = os.path.abspath(path)
-            self.search_branches()
-            self.search_word()
-            print(json.dumps(self.__dict__, sort_keys=True))
-        else:
-            raise Exception(f"The repo with path:\"{path}\" don't exist!")
 
-    def search_word(self):
-        g = CustomGit(self.path)
-        pritty_findings = []
-        g.stash_all()
-        for branch in self.branches:
-            g.go_to_branch(branch)
-            findings = g.find_word(self.word).decode()
-            findings = self.__split_and_discar_last(findings)
-            for f in findings:
-                f = f.split(':')
-                if 'Binary file' in f[0]:
-                    continue
-                pritty_findings.append({
-                    'branch': branch,
-                    'file': f[0],
-                    'line_numbre': f[1],
-                    'line': f[2].strip()
-                })
-        self.findings = pritty_findings
-        g.go_to_branch(self.default_branch)
-        g.de_stash()
+def __split_and_discar_last(info: str) -> List[str]:
+    return info.split('\n')[:-1]
 
-    @staticmethod
-    def __split_and_discar_last(info: str) -> List[str]:
-        return info.split('\n')[:-1]
 
-    def search_branches(self):
-        g = CustomGit(self.path)
-        branches = g.get_all_branches().decode()
-        branches = self.__split_and_discar_last(branches)
-        actual_branch = list(filter(self.__actual_branch__, branches))
-        self.default_branch = self.__clean_branch_name__(actual_branch[0])
-        self.branches = self.__clean_branches_name__(branches)
+def __clean_branch_name__(branch_name: str) -> str:
+    if __actual_branch__(branch_name):
+        branch_name = branch_name[1:]
+    return branch_name.strip()
 
-    def __clean_branch_name__(self, branch_name: str) -> str:
-        if self.__actual_branch__(branch_name):
-            branch_name = branch_name[1:]
-        return branch_name.strip()
 
-    @staticmethod
-    def __actual_branch__(branch_name: str) -> bool:
-        return branch_name[0] == '*'
+def __clean_branches_name__(branches: List[str]) -> List[str]:
+    return [__clean_branch_name__(b) for b in branches]
 
-    def __clean_branches_name__(self, branches: List[str]) -> List[str]:
-        return [self.__clean_branch_name__(b) for b in branches]
+
+def all_repos(path):
+    repos = []
+    dirs = os.listdir(path)
+    if '.git' in dirs:
+        repos.append(path)
+    os.chdir(path)
+    for file in dirs:
+        subdirs = os.listdir(file)
+        if '.git' in subdirs:
+            repos.append(file)
+    return repos
+
+
+def find_in_repo(path, word):
+    if os.path.exists(path) and os.path.isdir(path) and '.git' in os.listdir(path):
+        path = os.path.abspath(path)
+    else:
+        return f"The repo with path: {os.path.abspath(path)} don't exist!"
+
+    g = CustomGit(path)
+    branches = g.get_all_branches()
+    branches = __split_and_discar_last(branches)
+    actual_branch = list(filter(__actual_branch__, branches))
+    default_branch = __clean_branch_name__(actual_branch[0])
+    branches = __clean_branches_name__(branches)
+
+    pritty_findings = []
+    g.stash_all()
+    for branch in branches:
+        g.go_to_branch(branch)
+        findings = g.find_word(word)
+        findings = __split_and_discar_last(findings)
+        for f in findings:
+            f = f.split(':')
+            if 'Binary file' in f[0]:
+                continue
+            pritty_findings.append({
+                'branch': branch,
+                'file': f[0],
+                'line_numbre': f[1],
+                'line': f[2].strip()
+            })
+    findings = pritty_findings
+    g.go_to_branch(default_branch)
+    g.de_stash()
+    return {
+        'branches': branches,
+        'default_branch': default_branch,
+        'findings': findings,
+        'path': path,
+        'word': word
+    }
 
 
 if __name__ == "__main__":
@@ -112,5 +122,17 @@ if __name__ == "__main__":
     my_parser.add_argument('word',
                            type=str, help='the word to find in all branches')
 
+    my_parser.add_argument('-d',
+                           action="store_true", default=False,
+                           required=False, help="find all repositories in path directory")
+
     args = my_parser.parse_args()
-    Repo(args.path, args.word)
+    results = None
+    if args.d:
+        results = []
+        for path in all_repos(args.path):
+            results.append(find_in_repo(path, args.word))
+    else:
+        results = find_in_repo(args.path, args.word)
+
+    print(json.dumps(results,sort_keys=True))
