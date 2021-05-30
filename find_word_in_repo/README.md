@@ -103,12 +103,3 @@ $ git branch -r | grep -v '\->' | while read remote; do git branch --track "${re
 Para trackear todos los branch con origin de todos los repositorios de un directorio, utilizar el script `get_all_branches_localy.sh`.
 
 Definir dentro la variable `DIR`, que corresponde al nombre del directorio que contenga los repositorios.
-
-## Requisitos:
-
-- [jq](https://stedolan.github.io/jq/)
-
-- [tee](https://man7.org/linux/man-pages/man1/tee.1.html)
-
-Para ejecutarlos:
-`sh [nombre_del_archivo].sh`
